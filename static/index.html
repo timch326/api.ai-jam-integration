@@ -2,11 +2,12 @@
 <head>
 	<title>API Example</title>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-	<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
 	<script type="text/javascript">
 
-		var accessToken = "96825b22c6db47bba7c2712c382ccb71";
+		var accessToken = "bc820345b86a4f52926e909d9c22622c";
 		var baseUrl = "https://api.api.ai/v1/";
+		var clientId = Math.random().toString(36).slice(2);
 
 		$(document).ready(function() {
 			$("#input").keypress(function(event) {
@@ -71,13 +72,13 @@
 			var text = $("#input").val();
 			$.ajax({
 				type: "POST",
-				url: baseUrl + "query/",
+				url: baseUrl + "query?v=20150910",
 				contentType: "application/json; charset=utf-8",
 				dataType: "json",
 				headers: {
 					"Authorization": "Bearer " + accessToken
 				},
-				data: JSON.stringify({ q: text, lang: "en" }),
+				data: JSON.stringify({ q: text, lang: "en" , sessionId: clientId}),
 
 				success: function(data) {
 					setResponse(JSON.stringify(data, undefined, 2));
