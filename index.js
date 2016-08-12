@@ -5,7 +5,19 @@ const bodyParser = require("body-parser")
 const app = express();
 const port = process.env.PORT || 3000;
 
-const JAM_TOKEN = 'jDV8vNbgc5O7puxSze07Z30MpbBhDtQLLqYKrvNw';
+const JAM_TOKEN = 'ub1IBT0aJ4swyDgHV9kl9ieLP3AYHRddyDBP4BKw';
+const DC_NAME = 'developer'
+const ODATA_URL = `https://${DC_NAME}.sapjam.com/api/v1/OData/`
+function options(endPoint) {
+            var options = {
+                url: ODATA_URL + endPoint,
+                headers: {
+                    'Authorization': 'Bearer ' + JAM_TOKEN
+                },
+                json: true
+            }
+            return options;
+};
 
 app.use(morgan('combined'))
 app.use(bodyParser.urlencoded({extended: false}))
@@ -21,25 +33,54 @@ app.get('/hello', function(req, res){
 });
 
 app.post('/voice', function(req, res) {
+    var params = req.body.result.parameters
     switch (req.body.result.action) {
         case 'getNotifications':
-            res.json({"speech":"test_speech", "data": "test"});
+            var endPointParams = ['$expand=Sender'];
+            if (!params.generic_quantity){
+                endPointParams.push(`$top=${params.number || 5}`);
+            }
+            
+            request(options(`Notifications?` + endPointParams.join('&')), (error, response, body) => {
+              var notifications = body.d.results;
+              if (params.sender) {
+                  notifications = notifications.filter(notification => (
+                      notification.Sender.FirstName === params.sender || notification.Sender.LastName === params.sender || notification.Sender.FullName === params.sender
+                      ));
+              }
+              notifications.map(notification => {
+                  return {
+                      text: notification.Message,
+                      uri: notification.WebURL,
+                      title: notification.Description,
+                      date: notification.CreatedAt,
+                      eventType: notifcation.EventType
+                  }
+              });
+              if (notifications.length) {
+                  res.json({"speech":"These are the notifications", "data": notifications});
+              } else {
+                  res.json({'speech': 'You have no notifications' + (params.sender ? ` from ${params.sender}.` : '.')});
+              }
+              });
+              
             break;
         case 'whoAmI':
-            const options = {
-                url: 'https://developer.sapjam.com/api/v1/OData/Self?$format=json',
-                headers: {
-                    'Authorization': 'Bearer ' + JAM_TOKEN
-                },
-                json: true
-            }
-            request(options, (error, response, body) => {
-                const FullName = body.d.results.FullName;
-                const Title = body.d.results.Title;
+            request(options('Self'), (error, response, body) => {
+                const self = body.d.results;
+                const FullName = self.FullName;
+                const Title = self.Title;
+                const Email = self.Email;
                 
                 res.json({
                     speech: `You are ${FullName}` + (Title ? `, a ${Title}.` : '.'),
-                    data: body.d.results
+                    data: [{
+                        text: 'Email: ' + Email,
+                        uri: self.WebURL,
+                        title: `You are ${FullName}` + (Title ? `, a ${Title}.` : '.'),
+                        date: null,
+                        eventType: 'Member_Self'
+                    }]
                 });
             });
             break;

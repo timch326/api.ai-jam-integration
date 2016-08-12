@@ -5,7 +5,7 @@
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
 	<script type="text/javascript">
 
-		var accessToken = "bc820345b86a4f52926e909d9c22622c";
+		var accessToken = "b0d89a2d41414861801db1af7b2b6398";
 		var baseUrl = "https://api.api.ai/v1/";
 		var clientId = Math.random().toString(36).slice(2);
 
@@ -30,7 +30,7 @@
 			};
 			recognition.onresult = function(event) {
 				var text = "";
-			    for (var i = event.resultIndex; i < event.results.length; ++i) {
+			    for (var i = event.resultIndex;i  < event.results.length; ++i) {
 			    	text += event.results[i][0].transcript;
 			    }
 			    setInput(text);
