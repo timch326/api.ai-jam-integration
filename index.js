@@ -48,13 +48,13 @@ app.post('/voice', function(req, res) {
                       notification.Sender.FirstName === params.sender || notification.Sender.LastName === params.sender || notification.Sender.FullName === params.sender
                       ));
               }
-              notifications.map(notification => {
+              notifications = notifications.map(notification => {
                   return {
                       text: notification.Message,
                       uri: notification.WebURL,
                       title: notification.Description,
                       date: notification.CreatedAt,
-                      eventType: notifcation.EventType
+                      eventType: notification.EventType
                   }
               });
               if (notifications.length) {
