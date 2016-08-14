@@ -1,5 +1,4 @@
 const express = require('express');
-const request = require('request');
 const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const app = express();
@@ -10,9 +9,8 @@ const DC_NAME = 'developer';
 const ODATA_URL = `https://${DC_NAME}.sapjam.com/api/v1/OData/`;
 
 const configure = require('./server/requestBuilder')(ODATA_URL, JAM_TOKEN);
-const searchRequestHandler = require('./server/searchHandler');
-
-var contextState = {};
+const jamOdata = require('./server/jamOdata')(ODATA_URL, JAM_TOKEN);
+const search = require('./server/searchHandler');
 
 app.use(bodyParser.urlencoded({
     extended: false
@@ -25,13 +23,15 @@ app.listen(port, function() {
     console.log(`Server started at port ${port}`);
 });
 
+var contextState = {};
+
 app.post('/voice', function(req, res) {
     var params = req.body.result.parameters;
-    var contexts = req.body.result.contexts;
+    const contexts = req.body.result.contexts;
 
     switch (req.body.result.action) {
         case 'unreadNotificationCount':
-            request(configure(`Notifications_UnreadCount`), (error, response, body) => {
+            jamOdata.get(`Notifications_UnreadCount`, (error, response, body) => {
                 var count = body.d;
                 res.json({
                     "speech": "This is the unread notification count",
@@ -54,7 +54,7 @@ app.post('/voice', function(req, res) {
                 endPointParams.push(`$top=${params.number || 5}`);
             }
 
-            request(configure(`Notifications?` + endPointParams.join('&')), (error, response, body) => {
+            jamOdata.get(`Notifications?` + endPointParams.join('&'), (error, response, body) => {
                 var notifications = body.d.results;
 
                 if (params.sender) {
@@ -82,8 +82,8 @@ app.post('/voice', function(req, res) {
                 }
                 else {
                     res.json({
-                        "speech": 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
-                        "data": []
+                        speech: 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
+                        data: []
                     });
                 }
             });
@@ -96,18 +96,20 @@ app.post('/voice', function(req, res) {
             const notifications = contextState['notifications'];
             const current = notifications[0];
             contextState['currentNotification'] = current;
-            
+
             var speech = 'You have no more notifications left to read.';
-            
+
             if (current) {
-                speech = `${current.Description} ` + (current.Message ? current.Message : '');
+                speech = `${current.Description}` + (current.Message ? ` Saying - ${current.Message}` : '');
             }
-            
+
             if (contextState['notificationCount'] == 0) {
                 speech = 'Here\'s the first notification - ' + speech;
-            } else if (notifications.length == 1) {
+            }
+            else if (notifications.length == 1) {
                 speech = 'Here\'s the last one - ' + speech;
-            } else {
+            }
+            else {
                 speech = 'This is the next one - ' + speech;
             }
 
@@ -115,15 +117,13 @@ app.post('/voice', function(req, res) {
                 speech: speech,
                 data: notifications
             });
-            
+
             notifications.shift();
             contextState['notificationCount'] = contextState['notificationCount'] + 1;
             break;
 
-
-
         case 'whoAmI':
-            request(configure('Self'), (error, response, body) => {
+            jamOdata.get('Self', (error, response, body) => {
                 const self = body.d.results;
                 const FullName = self.FullName;
                 const Title = self.Title;
@@ -142,7 +142,18 @@ app.post('/voice', function(req, res) {
             });
             break;
         case 'search':
-            request(configure(`Search?Query='${params.query}'&$expand=ObjectReference`), searchRequestHandler(configure, params, res));
+            jamOdata.get(`Search?Query='${params.query}'&$expand=ObjectReference,Creator`, (error, response, body) => {
+                if (error) {
+                    res.status(500).end();
+                }
+                else {
+                    search.handleRequest(params, body.d.results, result => res.json(result));
+                }
+            });
+            break;
+
+        case 'readSearchResult':
+            search.handleReadRequest(req.body.result, result => res.json(result));
             break;
         default:
             res.status(400).end();
