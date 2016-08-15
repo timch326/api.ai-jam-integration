@@ -9,10 +9,8 @@ module.exports = {
         const params = request.result.parameters;
 
         // Clear any notification context
-        apiAiRequest.delete(`contexts/hasnotificationresults?sessionId=${request.sessionId}`);
+        apiAiRequest.delete(`contexts?sessionId=${request.sessionId}`, () => resolveSearchRequests(searchResults, params));
         
-        resolveSearchRequests(searchResults, params);
-
         function resolveSearchRequests(searchResults, params) {
             const searchCount = searchResults.length;
             const hasManyResults = searchCount > SEARCH_RESOLVE_LIMIT;
@@ -27,7 +25,7 @@ module.exports = {
                 displayText: outputText,
                 data: searchResults.map(standardize),
                 contextOut: searchCount ? [{
-                    name: 'hasSearchResults',
+                    name: 'hassearchresults',
                     parameters: {
                         searchResults: searchResults,
                         readCount: 0
@@ -49,7 +47,7 @@ module.exports = {
             displayText: text,
             data: (readCount >= searchResults.length) ? [] : [searchResults[readCount]].map(standardize),
             contextOut: (readCount < searchResults.length) ? [{
-                name: 'hasSearchResults',
+                name: 'hassearchresults',
                 parameters: {
                     searchResults: searchResults,
                     readCount: readCount + 1

@@ -45,53 +45,60 @@ app.post('/voice', function(req, res) {
 
         case 'getNotifications':
             // Clear any search context
-            apiAiRequest.delete(`contexts/hassearchresults?sessionId=${req.body.sessionId}`);
-            
-            var endPointParams = ['$expand=Sender,ObjectReference'];
-            if (!params.generic_quantity) {
-                endPointParams.push(`$top=${params.number || 5}`);
-            }
-
-            jamOdata.get(`Notifications?` + endPointParams.join('&'), (error, response, body) => {
-                var notifications = body.d.results;
-
-                if (params.sender) {
-                    notifications = notifications.filter(notification => (
-                        notification.Sender.FirstName === params.sender || notification.Sender.LastName === params.sender || notification.Sender.FullName === params.sender
-                    ));
+            apiAiRequest.delete(`contexts?sessionId=${req.body.sessionId}`, () => {
+                var endPointParams = ['$expand=Sender,ObjectReference'];
+                if (!params.generic_quantity) {
+                    endPointParams.push(`$top=${params.number || 5}`);
                 }
 
-                const contextOut = [{
-                    name: 'hasnotificationresults',
-                    parameters: {
-                        notifications: notifications,
-                        readCount: 0
+                jamOdata.get(`Notifications?` + endPointParams.join('&'), (error, response, body) => {
+                    var notifications = body.d.results;
+
+
+                    if (params.sender) {
+                        notifications = notifications.filter(notification => (
+                            notification.Sender.FirstName === params.sender || notification.Sender.LastName === params.sender || notification.Sender.FullName === params.sender
+                        ));
                     }
-                }];
 
-                if (notifications.length) {
-                    res.json({
-                        speech: `You've got ${notifications.length > 1 ? notifications.length : 'a'} notification${notifications.length > 1 ? 's' : ''}.`,
-                        displayText: "Here are your unread notifications: ",
-                        contextOut: contextOut,
-                        data: notifications.map(standardize)
-                    });
-                }
-                else {
-                    res.json({
-                        speech: 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
-                        displayText: 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
-                        data: []
-                    });
-                }
+                    const contextOut = [{
+                        name: 'hasnotificationresults',
+                        parameters: {
+                            notifications: notifications,
+                            readCount: 0
+                        }
+                    }];
+
+                    if (notifications.length) {
+                        var notificationSpeech = `You've got ${notifications.length > 1 ? notifications.length : 'a'} notification${notifications.length > 1 ? 's' : ''}.`;
+                        
+                        if (!params.generic_quantity) {
+                            notificationSpeech = `Here are you first ${notifications.length} notifications.`;
+                        }
+                        
+                        res.json({
+                            speech: notificationSpeech,
+                            displayText: "Here are your notifications: ",
+                            contextOut: contextOut,
+                            data: notifications.map(standardize)
+                        });
+                    }
+                    else {
+                        res.json({
+                            speech: 'You have no notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
+                            displayText: 'You have no notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
+                            data: []
+                        });
+                    }
+                });
             });
             break;
 
         case 'readNotifications':
-            const context = req.body.result.contexts.find(context => context.name == 'hasnotificationresults');
-            const notifications = context.parameters.notifications;
-            const readCount = context.parameters.readCount;
-            const current = notifications[readCount];
+            var context = req.body.result.contexts.find(context => context.name == 'hasnotificationresults');
+            var notifications = context.parameters.notifications;
+            var readCount = context.parameters.readCount;
+            var current = notifications[readCount];
 
             var speech = 'You have no more notifications left to read.';
 
@@ -109,7 +116,7 @@ app.post('/voice', function(req, res) {
                 speech = 'This is the next one - ' + speech;
             }
 
-            const contextOut = (readCount < notifications.length) ? [{
+            var contextOut = (readCount < notifications.length) ? [{
                 name: 'hasnotificationresults',
                 parameters: {
                     notifications: notifications,
@@ -132,7 +139,47 @@ app.post('/voice', function(req, res) {
             break;
 
         case 'dismissNotification':
+            context = req.body.result.contexts.find(context => context.name == 'hasnotificationresults');
+            notifications = context.parameters.notifications;
+            readCount = context.parameters.readCount;
+            var toDismiss;
+            var displayText;
+            
+            if (readCount == 0) {
+                speech = 'You have not listened to a notification yet';
+                displayText = `Must listen to a notification to dismiss it`;
+            }
+            else {
+                toDismiss = notifications[readCount - 1];
+                speech = 'Notification dismissed';
+                displayText = `Notification with id = ${toDismiss.Id} dismissed`;
+            }
 
+            contextOut = (readCount < notifications.length) ? [{
+                name: 'hasnotificationresults',
+                parameters: {
+                    notifications: notifications,
+                    readCount: readCount
+                }
+            }] : null;
+            
+
+            if (toDismiss) {
+                res.json({
+                    speech: speech,
+                    displayText: displayText,
+                    contextOut: contextOut,
+                    data: [toDismiss].map(standardize)
+                });
+                jamOdata.post(`Notification_Dismiss?Id='${toDismiss.Id}'`);
+            } else {
+                res.json({
+                    speech: speech,
+                    displayText: displayText,
+                    contextOut: contextOut,
+                    data: []
+                });
+            }
             break;
 
         case 'whoAmI':
