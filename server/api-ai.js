@@ -1,32 +1,35 @@
 const request = require('request');
 
-module.exports = function jamOdata(odataUrl, jamToken) {
+const BASE_URL = 'https://api.api.ai/v1/';
+const ACCESS_TOKEN = '525b66050466460f94c939fa8a9d7968';
+
+module.exports = function() {
     return {
-        get: odataRequest.bind(null, 'GET'),
-        post: odataRequest.bind(null, 'POST')
+        get: apiAiRequest.bind(null, 'GET'),
+        post: apiAiRequest.bind(null, 'POST'),
+        delete: apiAiRequest.bind(null, 'DELETE')
     };
 
-    function odataRequest(method, endPointURL, callback) {
+    function apiAiRequest(method, endPointURL, callback) {
         const options = {
-            url: odataUrl + endPointURL,
+            url: BASE_URL + endPointURL,
             method: method,
             headers: {
-                'Authorization': 'Bearer ' + jamToken
+                'Authorization': 'Bearer ' + ACCESS_TOKEN
             },
             json: true
         };
-        console.log('Making Jam Odata Request.', options);
-        
+        console.log('Making api.ai request', options);
+
         request(options, (error, response, body) => {
             console.log(`${endPointURL} ${response.statusCode}`, body);
-            
+
             if (response.statusCode != 200 || !body.d || body.d.error || !body.d.results) {
                 callback ? callback(body, response, body) : null;
-            } else {
+            }
+            else {
                 callback ? callback(error, response, body) : null;
             }
         });
     }
-};
-
-
+}

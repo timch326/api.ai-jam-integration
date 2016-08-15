@@ -2,13 +2,13 @@ const express = require('express');
 const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const app = express();
+const apiAiRequest = require('./server/api-ai')();
 const port = process.env.PORT || 3000;
 
 const JAM_TOKEN = 'ub1IBT0aJ4swyDgHV9kl9ieLP3AYHRddyDBP4BKw';
 const DC_NAME = 'developer';
 const ODATA_URL = `https://${DC_NAME}.sapjam.com/api/v1/OData/`;
 
-const configure = require('./server/requestBuilder')(ODATA_URL, JAM_TOKEN);
 const jamOdata = require('./server/jamOdata')(ODATA_URL, JAM_TOKEN);
 const search = require('./server/searchHandler');
 
@@ -23,18 +23,15 @@ app.listen(port, function() {
     console.log(`Server started at port ${port}`);
 });
 
-var contextState = {};
-
 app.post('/voice', function(req, res) {
     var params = req.body.result.parameters;
-    const contexts = req.body.result.contexts;
 
     switch (req.body.result.action) {
         case 'unreadNotificationCount':
             jamOdata.get(`Notifications_UnreadCount`, (error, response, body) => {
                 var count = body.d;
                 res.json({
-                    "speech": "This is the unread notification count",
+                    "speech": `You have ${count} unread notifications.`,
                     "data": [{
                         text: 'There are ' + count + ' unread notifications.',
                         uri: null,
@@ -46,9 +43,10 @@ app.post('/voice', function(req, res) {
             });
             break;
 
-
-
         case 'getNotifications':
+            // Clear any search context
+            apiAiRequest.delete(`contexts/hassearchresults?sessionId=${req.body.sessionId}`);
+            
             var endPointParams = ['$expand=Sender,ObjectReference'];
             if (!params.generic_quantity) {
                 endPointParams.push(`$top=${params.number || 5}`);
@@ -63,63 +61,78 @@ app.post('/voice', function(req, res) {
                     ));
                 }
 
-                contextState['notifications'] = notifications;
-                contextState['notificationCount'] = 0;
+                const contextOut = [{
+                    name: 'hasnotificationresults',
+                    parameters: {
+                        notifications: notifications,
+                        readCount: 0
+                    }
+                }];
 
                 if (notifications.length) {
                     res.json({
-                        "speech": "Here are your unread notifications",
-                        "data": notifications.map(notification => {
-                            return {
-                                text: notification.Message,
-                                uri: notification.ObjectReference.WebURL,
-                                title: notification.Description,
-                                date: notification.CreatedAt,
-                                eventType: notification.EventType
-                            };
-                        })
+                        speech: `You've got ${notifications.length > 1 ? notifications.length : 'a'} notification${notifications.length > 1 ? 's' : ''}.`,
+                        displayText: "Here are your unread notifications: ",
+                        contextOut: contextOut,
+                        data: notifications.map(standardize)
                     });
                 }
                 else {
                     res.json({
                         speech: 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
+                        displayText: 'You have no unread notifications' + (params.sender ? ` from ${params.sender}.` : '.'),
                         data: []
                     });
                 }
             });
             break;
 
-
-
-
         case 'readNotifications':
-            const notifications = contextState['notifications'];
-            const current = notifications[0];
-            contextState['currentNotification'] = current;
+            const context = req.body.result.contexts.find(context => context.name == 'hasnotificationresults');
+            const notifications = context.parameters.notifications;
+            const readCount = context.parameters.readCount;
+            const current = notifications[readCount];
 
             var speech = 'You have no more notifications left to read.';
 
-            if (current) {
+            if (readCount < notifications.length) {
                 speech = `${current.Description}` + (current.Message ? ` Saying - ${current.Message}` : '');
             }
 
-            if (contextState['notificationCount'] == 0) {
+            if (readCount == 0) {
                 speech = 'Here\'s the first notification - ' + speech;
             }
-            else if (notifications.length == 1) {
+            else if (readCount == notifications.length - 1) {
                 speech = 'Here\'s the last one - ' + speech;
             }
             else {
                 speech = 'This is the next one - ' + speech;
             }
 
+            const contextOut = (readCount < notifications.length) ? [{
+                name: 'hasnotificationresults',
+                parameters: {
+                    notifications: notifications,
+                    readCount: readCount + 1
+                }
+            }] : null;
+
             res.json({
                 speech: speech,
-                data: notifications
+                displayText: speech,
+                contextOut: contextOut,
+                data: readCount < notifications.length ? [notifications[readCount]].map(standardize) : []
             });
 
-            notifications.shift();
-            contextState['notificationCount'] = contextState['notificationCount'] + 1;
+            jamOdata.post(`Notification_MarkAsRead?Id='${current.Id}'`);
+            break;
+
+        case 'acceptNotification':
+
+            break;
+
+        case 'dismissNotification':
+
             break;
 
         case 'whoAmI':
@@ -147,7 +160,7 @@ app.post('/voice', function(req, res) {
                     res.status(500).end();
                 }
                 else {
-                    search.handleRequest(params, body.d.results, result => res.json(result));
+                    search.handleRequest(req.body, body.d.results, result => res.json(result));
                 }
             });
             break;
@@ -158,4 +171,15 @@ app.post('/voice', function(req, res) {
         default:
             res.status(400).end();
     }
+
+    function standardize(notification) {
+        return {
+            text: notification.Message,
+            uri: notification.WebURL || (notification.ObjectReference ? notification.ObjectReference.WebURL : ''),
+            title: notification.Description,
+            date: notification.CreatedAt,
+            eventType: notification.EventType
+        }
+    }
+
 });

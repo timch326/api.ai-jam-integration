@@ -1,12 +1,17 @@
 const jamOdata = require('./jamOdata');
+const apiAiRequest = require('./api-ai')();
 
 const SEARCH_RESOLVE_LIMIT = 3;
 
 // Returns a callback function for the 'request' function
 module.exports = {
-    handleRequest: function(params, results, callback) {
+    handleRequest: function(request, searchResults, callback) {
+        const params = request.result.parameters;
 
-        resolveSearchRequests(results, params);
+        // Clear any notification context
+        apiAiRequest.delete(`contexts/hasnotificationresults?sessionId=${request.sessionId}`);
+        
+        resolveSearchRequests(searchResults, params);
 
         function resolveSearchRequests(searchResults, params) {
             const searchCount = searchResults.length;
@@ -14,7 +19,7 @@ module.exports = {
 
             var outputText = 'I found no search results for ' + params.query;
             if (searchCount) {
-                outputText = `I have found ${searchCount} search results for "${params.query}".` + (hasManyResults ? ' Here are the first ${SEARCH_RESOLVE_LIMIT} results.' : '');
+                outputText = `I have found ${searchCount} search results for "${params.query}".` + (hasManyResults ? ` Here are the first ${SEARCH_RESOLVE_LIMIT} results.` : '');
             }
 
             callback({
@@ -79,7 +84,7 @@ function describeSearchResultDetails(searchResult, callback) {
     switch (searchResult.ObjectReference.Type) {
         case 'Group':
             jamOdata.get(`Groups('${id}')`, (error, response, body) => {
-                
+                callback(``);
             });
         case 'ContentItem':
             if (searchResult.ObjectReference.ContentType == 'linked') {}
